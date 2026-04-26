@@ -1,0 +1,8 @@
+﻿Gent-Sint-Pieters	guent sint pi ter
+Antwerpen-Centraal	ann ver pen sen tral
+Brugge	bru gueu
+Hasselt	a selt
+Mechelen	mé ke len
+Leuven	leu ven
+Huy	wi
+NMBS	en em bé es

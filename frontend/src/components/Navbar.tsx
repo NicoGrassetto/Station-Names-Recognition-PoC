@@ -1,3 +1,4 @@
+import nmbsLogo from "../assets/nmbs-sncb.png";
 import "./Navbar.css";
 
 export default function Navbar() {
@@ -20,6 +21,7 @@ export default function Navbar() {
         </div>
         <span className="navbar-title">GPT Realtime Starter Kit</span>
       </div>
+      <img src={nmbsLogo} alt="NMBS / SNCB" className="navbar-nmbs-logo" />
     </nav>
   );
 }

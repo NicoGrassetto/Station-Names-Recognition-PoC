@@ -4,13 +4,11 @@ import "./Transcript.css";
 
 interface TranscriptProps {
   entries: TranscriptEntry[];
-  variant?: "default" | "document";
   compact?: boolean;
 }
 
 export default function Transcript({
   entries,
-  variant = "default",
   compact = false,
 }: TranscriptProps) {
   const endRef = useRef<HTMLDivElement>(null);
@@ -23,7 +21,7 @@ export default function Transcript({
 
   const classes = [
     "transcript",
-    `transcript--${variant}`,
+    "transcript--default",
     compact && "transcript--compact",
   ]
     .filter(Boolean)
@@ -36,9 +34,7 @@ export default function Transcript({
           key={entry.id}
           className={`transcript-entry transcript-entry--${entry.role}`}
         >
-          {variant !== "document" && (
-            <span className="transcript-role">{entry.role}</span>
-          )}
+          <span className="transcript-role">{entry.role}</span>
           <span>{entry.text}</span>
         </div>
       ))}

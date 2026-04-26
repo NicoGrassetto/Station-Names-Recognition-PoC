@@ -29,7 +29,13 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from config import load_session_config, list_modes
 from prompts import list_prompts
-from src.agent import get_agent
+from src.agent import get_agent, get_booking_agent
+from src.booking import (
+    BookingContext,
+    DestinationSelectionState,
+    get_speech_endpoint_id,
+    transcribe_destination_audio,
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("realtime-relay")
@@ -153,6 +159,12 @@ class RealtimeWebSocketManager:
         self.active_sessions: dict[str, RealtimeSession] = {}
         self.session_contexts: dict[str, Any] = {}
         self.websockets: dict[str, WebSocket] = {}
+        # Per-session booking contexts (only populated for mode=="booking").
+        self.booking_contexts: dict[str, BookingContext] = {}
+        # Buffer of int16 PCM samples captured while in DestinationSelectionState.
+        self.destination_audio_buffers: dict[str, bytearray] = {}
+        # Set of sessions currently running an Azure Speech transcription.
+        self.destination_transcribing: set[str] = set()
 
     async def connect(
         self,
@@ -165,7 +177,15 @@ class RealtimeWebSocketManager:
         await websocket.accept()
         self.websockets[session_id] = websocket
 
-        agent = get_agent(prompt)
+        booking_ctx: BookingContext | None = None
+        if mode == "booking":
+            booking_ctx = BookingContext()
+            self.booking_contexts[session_id] = booking_ctx
+            self.destination_audio_buffers[session_id] = bytearray()
+            agent = get_booking_agent(booking_ctx)
+        else:
+            agent = get_agent(prompt)
+
         runner = RealtimeRunner(agent)
 
         token = _get_azure_token()
@@ -180,7 +200,32 @@ class RealtimeWebSocketManager:
         self.active_sessions[session_id] = session
         self.session_contexts[session_id] = session_context
 
+        # Wire the state-change callback so booking tools can push the new
+        # system prompt back to the realtime model after every transition.
+        if booking_ctx is not None:
+            async def _on_state_change(ctx: BookingContext) -> None:
+                await self._on_booking_state_change(session_id, ctx)
+
+            booking_ctx.on_state_change = _on_state_change
+
         asyncio.create_task(self._process_events(session_id))
+
+        # Initial logs once the session is wired up.
+        deployment = model or AZURE_OPENAI_DEPLOYMENT
+        await self._send_log(
+            session_id,
+            "session",
+            f"Connected (mode={mode})",
+            realtime_model=deployment,
+            mode=mode,
+        )
+        if booking_ctx is not None and booking_ctx.state is not None:
+            await self._send_log(
+                session_id,
+                "state",
+                f"Initial state: {type(booking_ctx.state).__name__}",
+                state=type(booking_ctx.state).__name__,
+            )
 
     async def disconnect(self, session_id: str) -> None:
         if session_id in self.session_contexts:
@@ -190,8 +235,17 @@ class RealtimeWebSocketManager:
             del self.active_sessions[session_id]
         if session_id in self.websockets:
             del self.websockets[session_id]
+        self.booking_contexts.pop(session_id, None)
+        self.destination_audio_buffers.pop(session_id, None)
+        self.destination_transcribing.discard(session_id)
 
     async def send_audio(self, session_id: str, audio_bytes: bytes) -> None:
+        ctx = self.booking_contexts.get(session_id)
+        # While capturing the destination, also buffer the audio so we can run
+        # it through the custom Azure Speech endpoint when the realtime VAD
+        # detects end-of-speech.
+        if ctx is not None and isinstance(ctx.state, DestinationSelectionState):
+            self.destination_audio_buffers[session_id].extend(audio_bytes)
         if session_id in self.active_sessions:
             await self.active_sessions[session_id].send_audio(audio_bytes)
 
@@ -221,6 +275,174 @@ class RealtimeWebSocketManager:
         if not session:
             return
         await session.interrupt()
+
+    # -- Logging ------------------------------------------------------------
+
+    async def _send_log(
+        self,
+        session_id: str,
+        source: str,
+        message: str,
+        level: str = "info",
+        **meta: Any,
+    ) -> None:
+        """Push a structured log entry to the connected client (if any)."""
+        websocket = self.websockets.get(session_id)
+        logger.log(
+            logging.WARNING if level == "warn" else logging.INFO,
+            "[%s] %s | %s",
+            source, message, meta or "",
+        )
+        if websocket is None:
+            return
+        payload: dict[str, Any] = {
+            "type": "log",
+            "level": level,
+            "source": source,
+            "message": message,
+        }
+        if meta:
+            payload["meta"] = meta
+        try:
+            await websocket.send_text(json.dumps(payload, default=str))
+        except Exception:
+            pass
+
+    # -- Booking flow ------------------------------------------------------
+
+    async def _on_booking_state_change(
+        self, session_id: str, ctx: BookingContext
+    ) -> None:
+        """Push the new state's system prompt to the realtime model and notify the client."""
+        websocket = self.websockets.get(session_id)
+        if ctx.state is None:
+            if websocket is not None:
+                await websocket.send_text(
+                    json.dumps({"type": "booking_state", "state": None, "summary": ctx.summary()})
+                )
+            return
+
+        new_prompt = ctx.state.load_prompt()
+        update_payload: dict[str, Any] = {"instructions": new_prompt}
+        # In destination selection we want VAD to keep firing (so we know when
+        # the user stopped speaking), but the realtime model must not produce
+        # an audio reply — Azure Speech is the source of truth and we'll feed
+        # the transcript back as text.
+        vad_base = {
+            "type": "server_vad",
+            "threshold": 0.5,
+            "prefix_padding_ms": 300,
+            "silence_duration_ms": 250,
+            "interrupt_response": True,
+        }
+        if isinstance(ctx.state, DestinationSelectionState):
+            update_payload["turn_detection"] = {**vad_base, "create_response": False}
+        else:
+            update_payload["turn_detection"] = {**vad_base, "create_response": True}
+
+        await self.send_client_event(
+            session_id,
+            {"type": "session.update", "session": update_payload},
+        )
+        # Reset the destination buffer when entering / leaving that state.
+        self.destination_audio_buffers[session_id] = bytearray()
+
+        await self._send_log(
+            session_id,
+            "state",
+            f"Transitioned to {type(ctx.state).__name__}",
+            state=type(ctx.state).__name__,
+            summary=ctx.summary(),
+        )
+
+        if websocket is not None:
+            await websocket.send_text(
+                json.dumps(
+                    {
+                        "type": "booking_state",
+                        "state": type(ctx.state).__name__,
+                        "summary": ctx.summary(),
+                    }
+                )
+            )
+
+    async def _commit_destination_audio(self, session_id: str) -> None:
+        """Run the buffered destination audio through Azure Speech and inject the
+        transcript into the realtime conversation as a user text message."""
+        ctx = self.booking_contexts.get(session_id)
+        if ctx is None or not isinstance(ctx.state, DestinationSelectionState):
+            return
+        if session_id in self.destination_transcribing:
+            return
+        buf = bytes(self.destination_audio_buffers.get(session_id, b""))
+        self.destination_audio_buffers[session_id] = bytearray()
+        if not buf:
+            return
+        self.destination_transcribing.add(session_id)
+        locale = ctx.locale()
+        endpoint_id = get_speech_endpoint_id(locale)
+        await self._send_log(
+            session_id,
+            "speech",
+            f"Transcribing {len(buf)} bytes via Azure Speech ({locale})",
+            locale=locale,
+            endpoint_id=endpoint_id or "base-model",
+            bytes=len(buf),
+        )
+        try:
+            loop = asyncio.get_running_loop()
+            try:
+                transcript = await loop.run_in_executor(
+                    None, transcribe_destination_audio, buf, locale
+                )
+            except Exception:
+                logger.exception("Azure Speech transcription failed")
+                await self._send_log(
+                    session_id,
+                    "speech",
+                    "Azure Speech transcription failed",
+                    level="warn",
+                    locale=locale,
+                )
+                transcript = ""
+        finally:
+            self.destination_transcribing.discard(session_id)
+
+        if not transcript:
+            await self._send_log(
+                session_id,
+                "speech",
+                "No transcription returned",
+                level="warn",
+                locale=locale,
+            )
+            return
+
+        await self._send_log(
+            session_id,
+            "speech",
+            f"Transcribed: {transcript!r}",
+            locale=locale,
+            endpoint_id=endpoint_id or "base-model",
+            transcript=transcript,
+        )
+
+        text = f"[Azure Speech transcription]: {transcript}"
+        user_msg: RealtimeUserInputMessage = {
+            "type": "message",
+            "role": "user",
+            "content": [{"type": "input_text", "text": text}],
+        }
+        await self.send_user_message(session_id, user_msg)
+        # Auto-response was disabled in destination state; explicitly ask
+        # the realtime model to respond now that we've injected the transcript.
+        await self.send_client_event(session_id, {"type": "response.create"})
+
+        websocket = self.websockets.get(session_id)
+        if websocket is not None:
+            await websocket.send_text(
+                json.dumps({"type": "speech_transcript", "text": transcript})
+            )
 
     # -- Event processing --------------------------------------------------
 
@@ -294,6 +516,41 @@ class RealtimeWebSocketManager:
             websocket = self.websockets[session_id]
 
             async for event in session:
+                # Auto-trigger Azure Speech transcription when realtime VAD
+                # detects end-of-speech while we are in DestinationSelectionState.
+                if event.type == "raw_model_event":
+                    raw_type = getattr(event.data, "type", None)
+                    if raw_type in (
+                        "input_audio_buffer.speech_stopped",
+                        "input_audio_buffer.committed",
+                    ):
+                        ctx = self.booking_contexts.get(session_id)
+                        if ctx is not None and isinstance(
+                            ctx.state, DestinationSelectionState
+                        ):
+                            asyncio.create_task(
+                                self._commit_destination_audio(session_id)
+                            )
+
+                # Surface tool calls to the UI console.
+                if event.type == "tool_start":
+                    ctx = self.booking_contexts.get(session_id)
+                    await self._send_log(
+                        session_id,
+                        "tool",
+                        f"Calling {event.tool.name}()",
+                        tool=event.tool.name,
+                        state=ctx.state_name() if ctx else None,
+                    )
+                elif event.type == "tool_end":
+                    await self._send_log(
+                        session_id,
+                        "tool",
+                        f"{event.tool.name}() returned",
+                        tool=event.tool.name,
+                        output=str(event.output)[:500],
+                    )
+
                 event_data = await self._serialize_event(event)
                 await websocket.send_text(json.dumps(event_data))
         except Exception as e:
@@ -425,24 +682,14 @@ async def websocket_endpoint(
                 audio_bytes = struct.pack(f"{len(int16_data)}h", *int16_data)
                 await manager.send_audio(session_id, audio_bytes)
 
-            elif msg_type == "image":
-                data_url = message.get("data_url")
-                prompt_text = message.get("text") or "Please describe this image."
-                if data_url:
-                    user_msg: RealtimeUserInputMessage = {
-                        "type": "message",
-                        "role": "user",
-                        "content": [
-                            {"type": "input_image", "image_url": data_url, "detail": "high"},
-                            {"type": "input_text", "text": prompt_text},
-                        ],
-                    }
-                    await manager.send_user_message(session_id, user_msg)
-
             elif msg_type == "commit_audio":
-                await manager.send_client_event(
-                    session_id, {"type": "input_audio_buffer.commit"}
-                )
+                ctx = manager.booking_contexts.get(session_id)
+                if ctx is not None and isinstance(ctx.state, DestinationSelectionState):
+                    await manager._commit_destination_audio(session_id)
+                else:
+                    await manager.send_client_event(
+                        session_id, {"type": "input_audio_buffer.commit"}
+                    )
 
             elif msg_type == "interrupt":
                 await manager.interrupt(session_id)
@@ -450,7 +697,7 @@ async def websocket_endpoint(
             elif msg_type == "text":
                 text = message.get("text", "")
                 if text:
-                    user_msg = {
+                    user_msg: RealtimeUserInputMessage = {
                         "type": "message",
                         "role": "user",
                         "content": [

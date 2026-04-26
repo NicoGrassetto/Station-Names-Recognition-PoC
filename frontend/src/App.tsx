@@ -1,22 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Navbar from "./components/Navbar";
-import ModalityMatrix from "./components/ModalityMatrix";
 import HeroText from "./components/HeroText";
 import ChatInput from "./components/ChatInput";
 import Transcript from "./components/Transcript";
 import StatusBar from "./components/StatusBar";
 import AudioOrb from "./components/AudioOrb";
+import LogConsole from "./components/LogConsole";
 import { useRealtime } from "./hooks/useRealtime";
 import { createAudioCapture, type AudioCapture } from "./lib/audioCapture";
 import { createAudioPlayer, type AudioPlayer } from "./lib/audioPlayer";
 import "./App.css";
 
-// Modes that show the audio orb (audio output)
-const orbModes = ["voice_assistant", "vision", "text_to_speech"];
-// Modes that show vision image preview
-const visionModes = ["vision", "vision_text"];
-// Modes whose output is text-only (no audio playback)
-const textOnlyOutputModes = ["transcription", "vision_text", "text_chat"];
+const ACTIVE_MODE = "booking";
 
 interface ModelInfo {
   id: string;
@@ -26,15 +21,10 @@ interface ModelInfo {
 
 export default function App() {
   const [inputValue, setInputValue] = useState("");
-  const [activeMode, setActiveMode] = useState("voice_assistant");
   const [recording, setRecording] = useState(false);
   const [aiSpeaking, setAiSpeaking] = useState(false);
-  const [lastImage, setLastImage] = useState<string | null>(null);
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [selectedModel, setSelectedModel] = useState("");
-
-  const activeModeRef = useRef(activeMode);
-  activeModeRef.current = activeMode;
 
   const playerRef = useRef<AudioPlayer | null>(null);
   const captureRef = useRef<AudioCapture | null>(null);
@@ -47,7 +37,6 @@ export default function App() {
   }
 
   const handleAudioChunk = useCallback((base64: string) => {
-    if (textOnlyOutputModes.includes(activeModeRef.current)) return;
     setAiSpeaking(true);
     getPlayer().enqueue(base64);
   }, []);
@@ -58,7 +47,6 @@ export default function App() {
 
   const handleAudioInterrupted = useCallback(() => {
     setAiSpeaking(false);
-    if (textOnlyOutputModes.includes(activeModeRef.current)) return;
     getPlayer().interrupt();
   }, []);
 
@@ -67,10 +55,11 @@ export default function App() {
     connecting,
     transcript,
     toolActivity,
+    logs,
+    clearLogs,
     connect,
     disconnect,
     sendAudio,
-    sendImage,
     sendText,
   } = useRealtime(handleAudioChunk, handleAudioEnd, handleAudioInterrupted);
 
@@ -88,8 +77,8 @@ export default function App() {
   }, []);
 
   const handleConnect = useCallback(() => {
-    connect(activeMode, activeMode, selectedModel || undefined);
-  }, [connect, activeMode, selectedModel]);
+    connect(ACTIVE_MODE, ACTIVE_MODE, selectedModel || undefined);
+  }, [connect, selectedModel]);
 
   const handleDisconnect = useCallback(() => {
     if (captureRef.current?.isRecording()) {
@@ -121,14 +110,6 @@ export default function App() {
     }
   }, []);
 
-  const handleSendImage = useCallback(
-    (dataUrl: string, text?: string) => {
-      setLastImage(dataUrl);
-      sendImage(dataUrl, text);
-    },
-    [sendImage]
-  );
-
   const handleSendText = useCallback(
     (text: string) => {
       sendText(text);
@@ -136,33 +117,7 @@ export default function App() {
     [sendText]
   );
 
-  const handleModeChange = useCallback(
-    (mode: string) => {
-      if (connected) {
-        if (captureRef.current?.isRecording()) {
-          captureRef.current.stop();
-          captureRef.current = null;
-          setRecording(false);
-        }
-        setAiSpeaking(false);
-        setLastImage(null);
-        getPlayer().interrupt();
-        disconnect();
-        setActiveMode(mode);
-        setTimeout(() => connect(mode, mode, selectedModel || undefined), 300);
-      } else {
-        setActiveMode(mode);
-        setLastImage(null);
-      }
-    },
-    [connected, disconnect, connect, selectedModel]
-  );
-
   const showLanding = !connected && !connecting;
-  const showOrb = orbModes.includes(activeMode);
-  const showVisionPreview = visionModes.includes(activeMode) && !!lastImage;
-  const transcriptVariant: "default" | "document" =
-    activeMode === "transcription" ? "document" : "default";
   const orbState: "idle" | "listening" | "speaking" =
     aiSpeaking ? "speaking" : recording ? "listening" : "idle";
 
@@ -170,17 +125,9 @@ export default function App() {
     <div className="app">
       <Navbar />
       <main
-        className={`app-main${!showLanding ? ` app-main--session app-main--${activeMode}` : ""}`}
+        className={`app-main${!showLanding ? ` app-main--session app-main--${ACTIVE_MODE}` : ""}`}
       >
-        {showLanding && (
-          <>
-            <HeroText />
-            <ModalityMatrix
-              activeMode={activeMode}
-              onModeChange={handleModeChange}
-            />
-          </>
-        )}
+        {showLanding && <HeroText />}
         {!showLanding && (
           <div className="session-content">
             <StatusBar
@@ -188,22 +135,13 @@ export default function App() {
               connecting={connecting}
               recording={recording}
               toolActivity={toolActivity}
-              activeMode={activeMode}
             />
 
-            {showOrb && <AudioOrb state={orbState} />}
+            <AudioOrb state={orbState} />
 
-            {showVisionPreview && (
-              <div className="vision-preview">
-                <img src={lastImage!} alt="Sent image" />
-              </div>
-            )}
+            <Transcript entries={transcript} compact />
 
-            <Transcript
-              entries={transcript}
-              variant={transcriptVariant}
-              compact={showOrb || showVisionPreview}
-            />
+            <LogConsole logs={logs} onClear={clearLogs} />
           </div>
         )}
         <ChatInput
@@ -211,14 +149,12 @@ export default function App() {
           onChange={setInputValue}
           connected={connected}
           recording={recording}
-          activeMode={activeMode}
           models={models}
           selectedModel={selectedModel}
           onModelChange={setSelectedModel}
           onConnect={handleConnect}
           onDisconnect={handleDisconnect}
           onToggleMic={handleToggleMic}
-          onSendImage={handleSendImage}
           onSendText={handleSendText}
         />
       </main>

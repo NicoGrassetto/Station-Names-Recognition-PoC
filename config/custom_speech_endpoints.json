@@ -1,0 +1,10 @@
+{
+  "en-US": {
+    "endpoint_id": "27922c06-0551-4769-b414-61e0b3b0abd1",
+    "model": "https://speech-station-recognition-poc.cognitiveservices.azure.com/speechtotext/v3.2/models/a35ed13f-8706-4f72-ac42-533623bec7fa"
+  },
+  "fr-FR": {
+    "endpoint_id": "e8aa0576-a341-4bd8-8131-0485cc950216",
+    "model": "https://speech-station-recognition-poc.cognitiveservices.azure.com/speechtotext/v3.2/models/dea7997b-316b-416d-ae90-a912a5ad3697"
+  }
+}

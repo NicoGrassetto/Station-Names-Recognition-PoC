@@ -1,0 +1,16 @@
+name: booking
+description: Train-ticket booking flow with state-aware prompts and Azure Speech for destination capture
+
+session:
+  modalities: [text, audio]
+  temperature: 0.6
+  voice: alloy
+  # Disable the realtime model's input transcription — during destination
+  # selection we substitute the Azure Speech custom endpoint instead.
+  input_audio_transcription: null
+  turn_detection:
+    type: server_vad
+    threshold: 0.5
+    prefix_padding_ms: 300
+    silence_duration_ms: 250
+    create_response: true

@@ -22,15 +22,25 @@ export interface ToolActivity {
   output?: string;
 }
 
+export interface LogEntry {
+  id: string;
+  timestamp: number;
+  level: "info" | "warn" | "error";
+  source: string;
+  message: string;
+  meta?: Record<string, unknown>;
+}
+
 export interface UseRealtimeReturn {
   connected: boolean;
   connecting: boolean;
   transcript: TranscriptEntry[];
   toolActivity: ToolActivity | null;
+  logs: LogEntry[];
+  clearLogs: () => void;
   connect: (mode: string, prompt?: string, model?: string) => void;
   disconnect: () => void;
   sendAudio: (samples: number[]) => void;
-  sendImage: (dataUrl: string, text?: string) => void;
   sendCommitAudio: () => void;
   sendInterrupt: () => void;
   sendText: (text: string) => void;
@@ -48,6 +58,7 @@ export function useRealtime(
   const [connecting, setConnecting] = useState(false);
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
   const [toolActivity, setToolActivity] = useState<ToolActivity | null>(null);
+  const [logs, setLogs] = useState<LogEntry[]>([]);
   const sessionIdRef = useRef<string>("");
 
   // Stable refs for callbacks
@@ -167,6 +178,23 @@ export function useRealtime(
         setTimeout(() => setToolActivity(null), 2000);
         break;
 
+      case "log": {
+        const entry: LogEntry = {
+          id: String(nextId++),
+          timestamp: Date.now(),
+          level: ((data.level as string) || "info") as LogEntry["level"],
+          source: (data.source as string) || "system",
+          message: (data.message as string) || "",
+          meta: (data.meta as Record<string, unknown>) || undefined,
+        };
+        setLogs((prev) => {
+          const next = [...prev, entry];
+          // Cap to last 500 entries to keep the UI snappy
+          return next.length > 500 ? next.slice(next.length - 500) : next;
+        });
+        break;
+      }
+
       case "error":
         setTranscript((prev) => [
           ...prev,
@@ -192,6 +220,7 @@ export function useRealtime(
       setConnecting(true);
       setTranscript([]);
       setToolActivity(null);
+      setLogs([]);
 
       const sid = `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       sessionIdRef.current = sid;
@@ -255,14 +284,6 @@ export function useRealtime(
     }
   }, []);
 
-  const sendImage = useCallback((dataUrl: string, text?: string) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(
-        JSON.stringify({ type: "image", data_url: dataUrl, text })
-      );
-    }
-  }, []);
-
   const sendCommitAudio = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: "commit_audio" }));
@@ -281,6 +302,8 @@ export function useRealtime(
     }
   }, []);
 
+  const clearLogs = useCallback(() => setLogs([]), []);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -293,10 +316,11 @@ export function useRealtime(
     connecting,
     transcript,
     toolActivity,
+    logs,
+    clearLogs,
     connect,
     disconnect,
     sendAudio,
-    sendImage,
     sendCommitAudio,
     sendInterrupt,
     sendText,

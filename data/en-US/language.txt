@@ -1,0 +1,50 @@
+﻿Brussels-South
+Brussels-Midi
+Brussels-Central
+Brussels-North
+Antwerp-Central
+Ghent-Sint-Pieters
+Bruges
+Liege-Guillemins
+Charleroi-South
+Namur
+Mons
+Leuven
+Mechelen
+Hasselt
+Ostend
+Huy
+I want to go to Brussels-South.
+I'd like to go to Antwerp-Central.
+Take me to Bruges.
+Can you get me to Ghent-Sint-Pieters?
+I need a ticket to Liege-Guillemins.
+One ticket to Ostend, please.
+Two tickets to Bruges.
+A return to Antwerp-Central.
+A single to Brussels-Midi.
+What's the next train to Leuven?
+When is the next train to Namur?
+How do I get to Charleroi-South?
+I'm going to Mechelen.
+Brussels-Central, please.
+To Hasselt, please.
+Ostend, one way.
+Return ticket to Mons.
+I need to be in Brussels-North by six.
+What time does the train to Bruges leave?
+Is there a direct train to Liege-Guillemins?
+Can I get to Antwerp-Central without changing?
+Next train to Brussels-South, please.
+Book me a seat to Ghent-Sint-Pieters.
+I want to travel to Leuven tomorrow morning.
+How much is a ticket to Bruges?
+Cheapest fare to Ostend?
+Last train to Namur tonight?
+First train to Brussels-Midi in the morning?
+Help me get to Mechelen.
+I'd like to buy a ticket to Charleroi-South.
+A ticket to Huy, please.
+Return ticket to Huy.
+What time is the next train to Huy?
+I'd like to go to Huy.

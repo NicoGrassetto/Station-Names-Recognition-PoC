@@ -22,14 +22,12 @@
   --border-subtle: #2a2a2a;
   --border-chip: #333333;
 
-  /* Gradient */
+  /* Gradient — NMBS / SNCB blue + yellow */
   --gradient-hero: linear-gradient(
     135deg,
-    #60a5fa 0%,
-    #818cf8 30%,
-    #a78bfa 55%,
-    #818cf8 75%,
-    #60a5fa 100%
+    #FFCC00 0%,
+    #ffffff 50%,
+    #00509F 100%
   );
 
   /* Accent */

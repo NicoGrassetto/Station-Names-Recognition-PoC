@@ -25,18 +25,3 @@
   padding-top: 8px;
 }
 
-/* Vision image preview */
-.vision-preview {
-  display: flex;
-  justify-content: center;
-  padding: 8px 24px;
-  flex-shrink: 0;
-}
-
-.vision-preview img {
-  max-width: 200px;
-  max-height: 140px;
-  border-radius: 12px;
-  object-fit: cover;
-  border: 1px solid var(--border-subtle);
-}

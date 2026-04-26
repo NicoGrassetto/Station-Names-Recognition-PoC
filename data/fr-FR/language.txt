@@ -1,0 +1,50 @@
+﻿Bruxelles-Midi
+Bruxelles-Central
+Bruxelles-Nord
+Anvers-Central
+Gand-Saint-Pierre
+Bruges
+Liège-Guillemins
+Charleroi-Sud
+Namur
+Mons
+Louvain
+Malines
+Hasselt
+Ostende
+Huy
+Je voudrais aller à Bruxelles-Midi.
+Je veux aller à Anvers-Central.
+Emmenez-moi à Bruges.
+Pouvez-vous m'emmener à Gand-Saint-Pierre ?
+J'ai besoin d'un billet pour Liège-Guillemins.
+Un billet pour Ostende, s'il vous plaît.
+Deux billets pour Bruges.
+Un aller-retour pour Anvers-Central.
+Un aller simple pour Bruxelles-Midi.
+Quel est le prochain train pour Louvain ?
+À quelle heure part le prochain train pour Namur ?
+Comment je vais à Charleroi-Sud ?
+Je vais à Malines.
+Bruxelles-Central, s'il vous plaît.
+À Hasselt, s'il vous plaît.
+Ostende, aller simple.
+Aller-retour pour Mons.
+Je dois être à Bruxelles-Nord avant six heures.
+À quelle heure part le train pour Bruges ?
+Y a-t-il un train direct pour Liège-Guillemins ?
+Puis-je rejoindre Anvers-Central sans correspondance ?
+Prochain train pour Bruxelles-Midi, s'il vous plaît.
+Réservez-moi une place pour Gand-Saint-Pierre.
+Je voudrais voyager à Louvain demain matin.
+Combien coûte un billet pour Bruges ?
+Quel est le tarif le moins cher pour Ostende ?
+Dernier train pour Namur ce soir ?
+Premier train pour Bruxelles-Midi demain matin ?
+Aidez-moi à aller à Malines.
+Je voudrais acheter un billet pour Charleroi-Sud.
+Un billet pour Huy, s'il vous plaît.
+Aller-retour pour Huy.
+Est-ce que je peux avoir un ticket pour aller à Huy ?
+Le prochain train pour Huy ?
+Je voudrais aller à Huy.

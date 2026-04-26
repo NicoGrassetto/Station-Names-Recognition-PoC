@@ -4,7 +4,7 @@ export default function HeroText() {
   return (
     <section className="hero-text">
       <h1>
-        <code>gpt-realtime</code> Starter Kit
+        Ticket Booking Assistant
       </h1>
     </section>
   );

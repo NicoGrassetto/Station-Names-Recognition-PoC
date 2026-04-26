@@ -1,247 +1,188 @@
-# GPT Realtime Starter Kit
+# Station Names Recognition PoC
 
 <p align="center">
-  <img src="assets/demo.gif" alt="Demo" width="720" />
+  <img src="assets/nmbs-sncb.png" alt="NMBS/SNCB" width="360" />
 </p>
 
-[![Open in GitHub Codespaces](https://img.shields.io/static/v1?style=for-the-badge&label=GitHub+Codespaces&message=Open&color=brightgreen&logo=github)](https://codespaces.new/NicoGrassetto/gpt-4o-realtime-Starter-Kit)
-[![Open in Dev Containers](https://img.shields.io/static/v1?style=for-the-badge&label=Dev+Containers&message=Open&color=blue&logo=visualstudiocode)](https://vscode.dev/redirect?url=vscode://ms-vscode-remote.remote-containers/cloneInVolume?url=https://github.com/NicoGrassetto/gpt-4o-realtime-Starter-Kit)
+A proof-of-concept voice booking assistant for **NMBS/SNCB** (Belgian Railways) train tickets. The user converses naturally with a [GPT Realtime](https://learn.microsoft.com/azure/ai-services/openai/realtime-audio-quickstart) agent that walks them through a booking flow (language → product tier → destination → details → confirmation → receipt). For the destination step — where Belgian station names are notoriously hard to recognise across French, Flemish and English accents — audio is also routed to a **custom-trained [Azure AI Speech](https://learn.microsoft.com/azure/ai-services/speech-service/) endpoint** whose transcription is injected back into the Realtime session as ground truth.
 
-A starter kit for building realtime speech-to-speech applications using the [OpenAI Agents SDK](https://openai.github.io/openai-agents-python/) and the GPT Realtime API on Azure AI Foundry. It uses **Bicep** infrastructure-as-code and `azd` deployment automation to provision an Azure OpenAI resource with a GA Realtime model, then connects a **FastAPI** server via WebSocket to relay audio and SDK events between the browser and Azure.
-
-> **Warning — Not production-ready.** This starter kit is designed for **proof-of-concept and learning** scenarios. It ships with no authentication, no TLS, permissive CORS, and no production-grade rate limiting. Before deploying beyond localhost, add proper authentication, enable HTTPS, and review the [security considerations](#security-considerations) section.
+> **Warning — Not production-ready.** No authentication, no TLS, permissive CORS, mock payment/SMS tools. Localhost / demo use only.
 
 <p align="center">
+  <a href="#current-set-up">Current set-up</a> |
+  <a href="#how-it-works">How it works</a> |
   <a href="#project-structure">Project Structure</a> |
   <a href="#quick-start">Quick Start</a> |
-  <a href="#manual-setup">Manual Setup</a> |
-  <a href="#supported-ga-realtime-models">Supported GA Realtime Models</a> |
   <a href="#customization">Customization</a>
 </p>
+
+## Current set-up
+
+<p align="center">
+  <video src="assets/current-setup-demo.mp4" controls width="480"></video>
+</p>
+
+> If the video does not render in your Markdown viewer, watch it directly: [assets/current-setup-demo.mp4](assets/current-setup-demo.mp4).
+
+## How it works
+
+The app is driven by a small **state machine** in [package/](package/) (`LanguageSelectionState` → `ProductSelectionState` → `DestinationSelectionState` → `DetailsSelectionState` → `ConfirmationSelectionState` → `EndState`). Each state maps to a dedicated `.prompty` file in [prompts/](prompts/), and each transition is triggered by a tool call from the Realtime model.
+
+```
+LanguageSelection ──▶ ProductSelection ──▶ DestinationSelection ──▶ DetailsSelection ──▶ ConfirmationSelection ──▶ End
+   (fr/nl/en)          (tier)               (Azure Speech)            (date, return)        (mock SMS)              (mock receipt)
+```
+
+Key behaviours:
+
+- **Per-session state** — [src/booking.py](src/booking.py) holds a `BookingContext` per WebSocket. Every state change pushes a fresh prompt to the Realtime session via `session.update`.
+- **Azure Speech routing** — In `DestinationSelectionState`, audio is forked: it still feeds Realtime VAD for turn detection, but auto-response is suppressed. On `speech_stopped`, the buffered PCM16 is sent to a custom Azure Speech endpoint (locale-specific: `fr-FR`, `en-US`, with Flemish currently falling back to `fr-FR`), and the resulting station name is injected as a `[Azure Speech transcription]: <station>` user message before manually triggering `response.create`.
+- **Mock fulfilment** — The confirmation and end states use `@function_tool`s in [src/booking.py](src/booking.py) to simulate sending an SMS confirmation and emailing a receipt.
+- **Custom Speech training** — [scripts/train_custom_speech.py](scripts/train_custom_speech.py) trains/deploys language and (optionally) acoustic models from data in [data/](data/); manifests for active endpoints live in [config/custom_speech_endpoints.json](config/custom_speech_endpoints.json).
 
 ## Project Structure
 
 ```
-├── assets/                        # Static assets
+├── assets/                         # Static images and demo video
 ├── config/
-│   ├── __init__.py                # YAML config loader (modes + defaults)
-│   ├── session_defaults.yaml      # Shared session baseline
-│   └── modes/                     # Mode presets (voice_assistant, transcription, etc.)
-├── frontend/
-│   ├── index.html                 # Entry HTML
-│   ├── package.json               # Frontend dependencies
-│   ├── vite.config.ts             # Vite bundler config
-│   └── src/                       # React app (components, hooks, lib)
-├── hooks/
-│   ├── postprovision.ps1          # Post-provision hook (Windows)
-│   └── postprovision.sh           # Post-provision hook (Linux/Mac)
-├── infra/
-│   ├── main.bicep                 # Bicep orchestrator (subscription-scoped)
-│   ├── main.parameters.json       # Parameter bindings for azd
-│   └── core/
-│       ├── ai-resource.bicep      # Azure OpenAI (Cognitive Services) account
-│       ├── ai-model-deployment.bicep  # gpt-realtime-1.5 model deployment
-│       └── role-assignment.bicep  # RBAC: Cognitive Services OpenAI User
-├── prompts/
-│   ├── __init__.py                # Prompt loader (.prompty files)
-│   ├── default.prompty            # General-purpose voice assistant
-│   ├── customer_support.prompty   # Domain-specific support agent
-│   └── transcriber.prompty        # Transcription + translation
+│   ├── custom_speech_endpoints.json  # Custom Azure Speech endpoint manifest
+│   ├── session_defaults.yaml       # Shared Realtime session baseline
+│   └── modes/                      # Mode presets (booking, voice_assistant, …)
+├── data/                           # Training data for custom Speech (per locale)
+│   ├── en-US/{language.txt, pronunciation.txt, audio/}
+│   └── fr-FR/{language.txt, pronunciation.txt, audio/}
+├── frontend/                       # Vite + React UI
+├── hooks/                          # azd post-provision hooks
+├── infra/                          # Bicep IaC (Azure OpenAI + Speech + RBAC)
+├── package/                        # State machine: State + 6 subclasses
+├── prompts/                        # One .prompty per state (booking flow)
+├── raw/                            # Raw audio captures (per locale)
+├── scripts/
+│   ├── prep_audio.sh               # Convert raw audio for Speech training
+│   ├── train_custom_speech.py      # Train + deploy custom Speech models
+│   └── test_custom_speech.py       # Smoke-test a custom endpoint
 ├── src/
-│   ├── main.py                    # FastAPI server with SDK session manager
-│   └── agent.py                   # RealtimeAgent factory
-├── tools/
-│   ├── __init__.py                # Tool exports (ALL_TOOLS list)
-│   ├── weather.py                 # @function_tool: get_weather
-│   └── search.py                  # @function_tool: search_knowledge_base
-├── azure.yaml                     # Azure Developer CLI project config
-├── LICENSE
-├── README.md
-└── requirements.txt
+│   ├── agent.py                    # RealtimeAgent factory (booking + legacy)
+│   ├── booking.py                  # BookingContext, Speech bridge, tools
+│   └── main.py                     # FastAPI WebSocket server
+├── tools/                          # Generic @function_tools (weather, time, …)
+├── azure.yaml                      # azd project config
+├── requirements.txt
+└── README.md
 ```
 
 ## Quick Start
 
 ```bash
 azd auth login
-azd up                  # provisions infra and writes .env via post-provision hook
+azd up                  # provisions Azure OpenAI + Speech, writes .env via post-provision
 pip install -r requirements.txt
-uvicorn src.main:app --host 0.0.0.0 --port 8000
+
+# Backend
+python3 -m uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
+
+# Frontend (in another terminal)
+cd frontend && npm install && npm run dev
 ```
+
+Open the URL printed by Vite (typically `http://localhost:5173`), grant mic access, and start talking.
 
 ## Manual Setup
 
-### 1. Deploy Infrastructure
+### 1. Deploy infrastructure
 
 ```bash
 azd auth login
 azd up
 ```
 
-You will be prompted to:
-- Enter an **environment name** (e.g. `gptrealtimedev`)
-- Select your **Azure subscription**
-- Select a **region** (recommended: `Sweden Central` or `East US 2` for best model availability)
-
-After provisioning completes, a `.env` file is generated at the project root with:
+You will be prompted for an environment name, subscription and region (`Sweden Central` or `East US 2` recommended). After provisioning, a `.env` is written with:
 
 ```
 AZURE_OPENAI_ENDPOINT="https://<your-resource>.openai.azure.com/"
 AZURE_OPENAI_DEPLOYMENT="gpt-realtime-1-5"
+AZURE_SPEECH_REGION="<region>"
+AZURE_SPEECH_RESOURCE_ID="/subscriptions/.../Microsoft.CognitiveServices/accounts/<speech-account>"
 ```
+
+Authentication uses `DefaultAzureCredential` for both Azure OpenAI and Azure Speech — no API keys.
 
 Optional environment variables:
 
 | Variable | Default | Description |
 |---|---|---|
-| `ALLOWED_ORIGINS` | `http://localhost:5173,http://localhost:8000` | Comma-separated list of allowed CORS origins |
-| `MAX_SESSIONS` | `10` | Maximum number of concurrent WebSocket sessions |
+| `ALLOWED_ORIGINS` | `http://localhost:5173,http://localhost:8000` | Comma-separated CORS origins |
+| `MAX_SESSIONS` | `10` | Max concurrent WebSocket sessions |
 
-### 2. Install Dependencies & Run
+### 2. (Optional) Train custom Speech endpoints
+
+The destination step is gated by custom Speech endpoints listed in [config/custom_speech_endpoints.json](config/custom_speech_endpoints.json). To retrain from your own audio:
 
 ```bash
-pip install -r requirements.txt
-uvicorn src.main:app --host 0.0.0.0 --port 8000
+# 1. Drop raw audio in raw/<locale>/, then normalise
+./scripts/prep_audio.sh
+
+# 2. Train (and deploy) language + acoustic models
+python3 scripts/train_custom_speech.py            # all locales
+python3 scripts/train_custom_speech.py --skip-acoustic fr-FR  # language model only
+
+# 3. Smoke-test a clip
+python3 scripts/test_custom_speech.py fr-FR /path/to/clip.wav
 ```
 
-### 3. Tear Down
+Update `config/custom_speech_endpoints.json` with the new endpoint IDs when training finishes.
 
-To remove all deployed Azure resources:
+### 3. Run
+
+```bash
+python3 -m uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
+cd frontend && npm run dev
+```
+
+### 4. Tear down
 
 ```bash
 azd down
 ```
 
-## Supported GA Realtime Models
-
-This starter kit targets the **GA (Generally Available)** Realtime API only. Preview/beta models (`gpt-4o-realtime-preview`, `gpt-4o-mini-realtime-preview`) are not targeted by this kit, though they are supported by the API — GA models are recommended for stability.
-
-| Model ID | Version | Description |
-|---|---|---|
-| `gpt-realtime-1.5` | `2026-02-23` | Latest and best quality — **default for this kit** |
-| `gpt-realtime` | `2025-08-28` | Base GA realtime model |
-| `gpt-realtime-mini` | `2025-12-15` | Cost-efficient, updated mini |
-| `gpt-realtime-mini` | `2025-10-06` | Cost-efficient GA model |
-
-To use a different model, set the `AZURE_OPENAI_DEPLOYMENT` environment variable to the deployment name of any GA model above.
-
 ## Customization
 
-### Prompts
+### Booking prompts
 
-System prompts live in [prompts/](prompts/) as `.prompty` files. Each file has a YAML frontmatter block followed by the prompt text under `system:`.
+One `.prompty` per state in [prompts/](prompts/):
 
-To change the assistant's personality, edit an existing file or create a new one:
-
-```yaml
----
-name: my_agent
-description: My custom assistant
-authors:
-  - your-name
-model:
-  api: realtime
-  configuration:
-    type: azure_openai
-    azure_deployment: gpt-realtime-1-5
----
-
-system:
-You are a concise technical assistant that answers in bullet points.
-```
-
-The prompt is selected at connection time via the `prompt` query parameter on the WebSocket URL (e.g. `/ws/{session_id}?prompt=my_agent`). If omitted, `default` is used. Available prompts are listed at the `GET /api/prompts` endpoint.
-
-### Function Tools
-
-Tools are Python functions decorated with `@function_tool` from the OpenAI Agents SDK. They live in [tools/](tools/) and are auto-executed by the SDK when the model calls them.
-
-To add a new tool:
-
-1. Create a new file under `tools/` (e.g. `tools/calculator.py`):
-
-   ```python
-   from agents import function_tool
-   import ast
-
-   @function_tool
-   def calculate(expression: str) -> str:
-       """Evaluate a simple math expression and return the result."""
-       # WARNING: Never use eval() — it allows arbitrary code execution.
-       # Use ast.literal_eval for safe literal expressions, or a library
-       # like simpleeval for full math support.
-       return str(ast.literal_eval(expression))
-   ```
-
-2. Register it in [tools/__init__.py](tools/__init__.py):
-
-   ```python
-   from tools.calculator import calculate
-
-   ALL_TOOLS = [get_weather, search_knowledge_base, calculate]
-   ```
-
-The agent will automatically discover and call the new tool when relevant.
-
-### Session Settings
-
-The file [config/session_defaults.yaml](config/session_defaults.yaml) defines the baseline session configuration sent to the Realtime API on every connection. Mode presets override these defaults.
-
-| Setting | Default | Description |
+| Prompt | Used by | Purpose |
 |---|---|---|
-| `voice` | `alloy` | TTS voice. Options: `alloy`, `ash`, `ballad`, `coral`, `echo`, `sage`, `shimmer`, `verse` |
-| `input_audio_format` | `pcm16` | Format of audio sent from the client (`pcm16`, `g711_ulaw`, or `g711_alaw`) |
-| `output_audio_format` | `pcm16` | Format of audio returned to the client (`pcm16`, `g711_ulaw`, or `g711_alaw`) |
-| `temperature` | `0.8` | Sampling temperature (0.6–1.2). Lower = more deterministic. API default is 0.8 |
-| `modalities` | `[text, audio]` | Output modalities. `[text]` for text-only, `[text, audio]` for speech |
-| `input_audio_transcription.model` | `whisper-1` | Model used to transcribe incoming audio. Also supports `gpt-4o-transcribe`, `gpt-4o-mini-transcribe`, `gpt-4o-transcribe-diarize` |
-| `input_audio_noise_reduction` | *(not set)* | Noise reduction filter: `near_field` (headphones) or `far_field` (laptop/room mics). Set to `null` to disable |
-| `turn_detection` | `server_vad` object | Turn detection config. Set to `server_vad` or `semantic_vad` object, or set `turn_detection: null` to disable (manual/push-to-talk) |
-| `turn_detection.threshold` | `0.5` | VAD sensitivity (0.0–1.0). Higher = requires louder speech to trigger (`server_vad` only) |
-| `turn_detection.prefix_padding_ms` | `300` | Audio included before detected speech starts, in ms (`server_vad` only) |
-| `turn_detection.silence_duration_ms` | `200` | Silence needed to end a turn, in ms (`server_vad` only) |
-| `turn_detection.create_response` | `true` | Automatically generate a response when a turn ends |
-| `turn_detection.interrupt_response` | `true` | Automatically interrupt ongoing response when new speech is detected |
+| `language_selection.prompty` | `LanguageSelectionState` | Greet the user, pick fr/nl/en |
+| `product_selection.prompty` | `ProductSelectionState` | Standard / first / weekend / youth |
+| `destination_selection.prompty` | `DestinationSelectionState` | Trust `[Azure Speech transcription]: …` |
+| `details_selection.prompty` | `DetailsSelectionState` | Date, one-way / return |
+| `confirmation_selection.prompty` | `ConfirmationSelectionState` | Confirm + trigger mock SMS |
+| `end.prompty` | `EndState` | Offer receipt by email/SMS |
 
-### Modes
+To tweak tone or instructions, edit the `system:` block of the relevant file. Keep the destination prompt's instruction to **trust** the Azure Speech transcription — that's what makes station names work.
 
-Mode presets in [config/modes/](config/modes/) override specific session defaults to create purpose-built configurations. The frontend selects a mode, and the server merges it on top of `session_defaults.yaml`.
+### State machine
 
-| Mode | Description |
-|---|---|
-| `voice_assistant` | Continuous voice conversation with server VAD |
-| `text_chat` | Text input and text output only — no audio |
-| `text_to_speech` | Text input, audio + text output — type a message and hear the response |
-| `transcription` | Audio in, text only out — live transcription / translation (uses `semantic_vad`) |
-| `vision` | Image + audio input, audio + text output |
-| `vision_text` | Image + audio input, text only output |
+The flow is hard-coded in [package/state.py](package/state.py). To insert a new step (e.g. seat selection), subclass `State`, point `prompt_name` at a new prompty, return the next state from `confirm()`, then wire a tool in [src/booking.py](src/booking.py) that mutates the context and calls `ctx.state.confirm()`.
 
-To create a custom mode, add a new YAML file under `config/modes/`:
+### Function tools
 
-```yaml
-name: my_mode
-description: Low-temperature text-only mode
+Booking tools (`set_language`, `set_tier`, `set_destination`, `lookup_trains`, `set_details`, `send_purchase_confirmation_to_phone`, `send_receipt`, `cancel_step`) are built in `make_booking_tools(ctx)` in [src/booking.py](src/booking.py). Each gates on the current state and triggers a transition. Generic, state-agnostic tools live in [tools/](tools/) and are exported via `ALL_TOOLS`.
 
-session:
-  modalities: [text]
-  temperature: 0.6
-  turn_detection: null
-```
+### Session settings
 
-Only the settings you specify are overridden; everything else inherits from `session_defaults.yaml`.
+Baseline Realtime session settings are in [config/session_defaults.yaml](config/session_defaults.yaml); per-mode overrides in [config/modes/](config/modes/) (e.g. `booking.yaml` disables Whisper input transcription since Azure Speech handles destination words).
 
-> **Note:** The Realtime API enforces a **30-minute maximum session duration**. Plan for session renewal if you need longer interactions.
+> **Note:** The Realtime API enforces a **30-minute maximum session duration**. Plan for renewal if you need longer interactions.
 
 ## Security Considerations
 
-This starter kit is intended for **local development and proof-of-concept** use. Before deploying to a shared or production environment:
+This PoC is intended for **local development and demos** only. Before any wider deployment:
 
-- **Add authentication** — The server currently has no auth on any endpoint. Add API key validation or integrate with Microsoft Entra ID.
-- **Enable HTTPS** — Run behind a TLS-terminating reverse proxy (e.g. Azure App Service, nginx). Audio streams over plain WebSocket are unencrypted.
-- **Restrict CORS** — Set the `ALLOWED_ORIGINS` environment variable to your specific frontend domain(s). The default allows only `localhost`.
-- **Review infrastructure** — The Bicep templates deploy Azure OpenAI with `publicNetworkAccess: Enabled`. For production, use Private Endpoints and disable public access.
-- **Rate limiting** — The `MAX_SESSIONS` env var provides a basic concurrency cap. For production, add proper rate limiting middleware.
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+- **Add authentication** — The WebSocket and HTTP endpoints have no auth. Add API keys or Microsoft Entra ID.
+- **Enable HTTPS** — Run behind a TLS-terminating reverse proxy. Audio over plain WebSocket is unencrypted.
+- **Restrict CORS** — Set `ALLOWED_ORIGINS` to your specific frontend domain(s).
+- **Replace mock fulfilment** — `send_purchase_confirmation_to_phone` and `send_receipt` are stubs. Wire them to a real payment/messaging provider with proper validation.
+- **Lock down infrastructure** — The Bicep templates deploy Azure OpenAI and Speech with `publicNetworkAccess: Enabled`. Use Private Endpoints in production.
+- **Rate limiting** — `MAX_SESSIONS` is a concurrency cap, not real rate limiting.
