@@ -1,0 +1,150 @@
+.audio-orb {
+  position: relative;
+  width: 180px;
+  height: 180px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 32px auto 16px;
+  flex-shrink: 0;
+}
+
+.audio-orb-core {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: var(--gradient-hero);
+  position: relative;
+  z-index: 2;
+  transition: transform 0.4s ease, box-shadow 0.4s ease;
+}
+
+.audio-orb-ring {
+  position: absolute;
+  border-radius: 50%;
+  border: 1.5px solid transparent;
+  transition: all 0.4s ease;
+}
+
+.audio-orb-ring--1 {
+  width: 100px;
+  height: 100px;
+}
+
+.audio-orb-ring--2 {
+  width: 132px;
+  height: 132px;
+}
+
+.audio-orb-ring--3 {
+  width: 164px;
+  height: 164px;
+}
+
+/* ── Idle: gentle breathe ── */
+.audio-orb--idle .audio-orb-core {
+  animation: orb-breathe 4s ease-in-out infinite;
+  box-shadow: 0 0 20px rgba(96, 165, 250, 0.15);
+}
+
+.audio-orb--idle .audio-orb-ring {
+  border-color: rgba(96, 165, 250, 0.08);
+}
+
+/* ── Listening: blue pulse ── */
+.audio-orb--listening .audio-orb-core {
+  transform: scale(1.05);
+  box-shadow: 0 0 40px rgba(96, 165, 250, 0.35);
+  animation: orb-listen 1.8s ease-in-out infinite;
+}
+
+.audio-orb--listening .audio-orb-ring {
+  border-color: rgba(96, 165, 250, 0.25);
+  animation: ring-listen 1.8s ease-in-out infinite;
+}
+
+.audio-orb--listening .audio-orb-ring--2 {
+  animation-delay: 0.15s;
+}
+
+.audio-orb--listening .audio-orb-ring--3 {
+  animation-delay: 0.3s;
+}
+
+/* ── Speaking: energetic purple ── */
+.audio-orb--speaking .audio-orb-core {
+  transform: scale(1.1);
+  box-shadow: 0 0 60px rgba(139, 92, 246, 0.45);
+  animation: orb-speak 1s ease-in-out infinite;
+}
+
+.audio-orb--speaking .audio-orb-ring--1 {
+  border-color: rgba(139, 92, 246, 0.35);
+  animation: ring-speak 1.2s ease-out infinite;
+}
+
+.audio-orb--speaking .audio-orb-ring--2 {
+  border-color: rgba(139, 92, 246, 0.25);
+  animation: ring-speak 1.2s ease-out infinite 0.3s;
+}
+
+.audio-orb--speaking .audio-orb-ring--3 {
+  border-color: rgba(139, 92, 246, 0.15);
+  animation: ring-speak 1.2s ease-out infinite 0.6s;
+}
+
+/* ── Keyframes ── */
+@keyframes orb-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.04);
+  }
+}
+
+@keyframes orb-listen {
+  0%,
+  100% {
+    transform: scale(1.05);
+    box-shadow: 0 0 30px rgba(96, 165, 250, 0.25);
+  }
+  50% {
+    transform: scale(1.1);
+    box-shadow: 0 0 50px rgba(96, 165, 250, 0.45);
+  }
+}
+
+@keyframes ring-listen {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.3;
+  }
+  50% {
+    transform: scale(1.06);
+    opacity: 0.7;
+  }
+}
+
+@keyframes orb-speak {
+  0%,
+  100% {
+    transform: scale(1.1);
+  }
+  50% {
+    transform: scale(1.18);
+  }
+}
+
+@keyframes ring-speak {
+  0% {
+    transform: scale(0.9);
+    opacity: 0.7;
+  }
+  100% {
+    transform: scale(1.3);
+    opacity: 0;
+  }
+}

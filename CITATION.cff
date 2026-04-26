@@ -1,0 +1,19 @@
+cff-version: 1.2.0
+title: GPT Realtime Starter Kit
+message: >-
+  If you use this software, please cite it using the
+  metadata from this file.
+type: software
+authors:
+  - name: GPT Realtime Starter Kit Contributors
+license: MIT
+repository-code: https://github.com/NicoGrassetto/gpt-realtime-Starter-Kit
+keywords:
+  - openai
+  - gpt
+  - realtime
+  - speech-to-speech
+  - azure
+  - fastapi
+  - agents-sdk
+date-released: "2026-01-01"

@@ -1,0 +1,118 @@
+.modality-matrix {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  padding: 16px 24px 0;
+}
+
+.modality-matrix-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.matrix-grid {
+  display: grid;
+  grid-template-columns: auto 1fr 1fr;
+  grid-template-rows: auto repeat(3, 1fr);
+  gap: 6px;
+  max-width: 480px;
+  width: 100%;
+}
+
+.matrix-corner {
+}
+
+.matrix-col-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.matrix-col-header svg {
+  flex-shrink: 0;
+  opacity: 0.6;
+}
+
+.matrix-row-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.matrix-row-header svg {
+  flex-shrink: 0;
+  opacity: 0.6;
+}
+
+.matrix-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 8px;
+  border: 1px solid var(--border-chip);
+  border-radius: 10px;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: transparent;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s, box-shadow 0.15s;
+  text-align: center;
+  line-height: 1.3;
+}
+
+.matrix-cell:hover {
+  background: var(--bg-chip-hover);
+  border-color: var(--text-muted);
+  color: var(--text-primary);
+}
+
+.matrix-cell--active {
+  background: rgba(96, 165, 250, 0.12);
+  border-color: rgba(96, 165, 250, 0.5);
+  color: var(--text-primary);
+  box-shadow: 0 0 12px rgba(96, 165, 250, 0.15);
+}
+
+.matrix-cell--disabled {
+  opacity: 0.25;
+  cursor: default;
+  pointer-events: none;
+}
+
+@media (max-width: 480px) {
+  .matrix-grid {
+    gap: 4px;
+  }
+
+  .matrix-col-header,
+  .matrix-row-header {
+    font-size: 0.65rem;
+    padding: 6px 6px;
+  }
+
+  .matrix-col-header span,
+  .matrix-row-header span {
+    display: none;
+  }
+
+  .matrix-cell {
+    font-size: 0.7rem;
+    padding: 8px 4px;
+  }
+}

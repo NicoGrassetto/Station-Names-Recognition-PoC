@@ -1,0 +1,123 @@
+.transcript {
+  width: 100%;
+  max-width: 700px;
+  margin: 0 auto;
+  padding: 0 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 300px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-chip) transparent;
+}
+
+.transcript::-webkit-scrollbar {
+  width: 4px;
+}
+
+.transcript::-webkit-scrollbar-thumb {
+  background: var(--border-chip);
+  border-radius: 2px;
+}
+
+.transcript-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 14px;
+  border-radius: 12px;
+  font-size: 0.88rem;
+  line-height: 1.5;
+  max-width: 85%;
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.transcript-entry--user {
+  align-self: flex-end;
+  background: rgba(96, 165, 250, 0.12);
+  color: var(--text-primary);
+}
+
+.transcript-entry--assistant {
+  align-self: flex-start;
+  background: var(--bg-card);
+  color: var(--text-primary);
+}
+
+.transcript-entry--system {
+  align-self: center;
+  background: rgba(239, 68, 68, 0.12);
+  color: #fca5a5;
+  font-size: 0.8rem;
+  max-width: 100%;
+  text-align: center;
+}
+
+.transcript-role {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+/* ── Compact (used alongside orb/image) ── */
+.transcript--compact {
+  max-height: 200px;
+}
+
+/* ── Default full-height (no orb) ── */
+.transcript--default:not(.transcript--compact) {
+  max-height: none;
+  flex: 1;
+  min-height: 0;
+}
+
+/* ── Document variant (transcription mode) ── */
+.transcript--document {
+  max-width: 800px;
+  max-height: none;
+  flex: 1;
+  min-height: 0;
+  gap: 4px;
+}
+
+.transcript--document .transcript-entry {
+  align-self: stretch;
+  max-width: 100%;
+  padding: 10px 0;
+  border-radius: 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.transcript--document .transcript-entry--user {
+  background: transparent;
+  color: var(--text-muted);
+  font-style: italic;
+  font-size: 0.82rem;
+}
+
+.transcript--document .transcript-entry--assistant {
+  background: transparent;
+  font-size: 1.05rem;
+  line-height: 1.7;
+}
+
+.transcript--document .transcript-entry--system {
+  background: rgba(239, 68, 68, 0.08);
+  border-bottom: none;
+  border-radius: 8px;
+  padding: 8px 14px;
+}

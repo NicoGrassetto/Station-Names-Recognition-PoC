@@ -1,0 +1,42 @@
+.app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.app-main--session {
+  justify-content: flex-start;
+}
+
+/* Session content fills available space between navbar and chat input */
+.session-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+  padding-top: 8px;
+}
+
+/* Vision image preview */
+.vision-preview {
+  display: flex;
+  justify-content: center;
+  padding: 8px 24px;
+  flex-shrink: 0;
+}
+
+.vision-preview img {
+  max-width: 200px;
+  max-height: 140px;
+  border-radius: 12px;
+  object-fit: cover;
+  border: 1px solid var(--border-subtle);
+}
