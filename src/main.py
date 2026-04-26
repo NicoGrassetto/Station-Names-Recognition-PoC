@@ -28,8 +28,7 @@ from agents.realtime.model_inputs import RealtimeModelSendRawMessage
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from config import load_session_config, list_modes
-from prompts import list_prompts
-from src.agent import get_agent, get_booking_agent
+from src.agent import get_booking_agent
 from src.booking import (
     BookingContext,
     DestinationSelectionState,
@@ -170,21 +169,16 @@ class RealtimeWebSocketManager:
         self,
         websocket: WebSocket,
         session_id: str,
-        mode: str = "voice_assistant",
-        prompt: str = "default",
+        mode: str = "booking",
         model: str | None = None,
     ) -> None:
         await websocket.accept()
         self.websockets[session_id] = websocket
 
-        booking_ctx: BookingContext | None = None
-        if mode == "booking":
-            booking_ctx = BookingContext()
-            self.booking_contexts[session_id] = booking_ctx
-            self.destination_audio_buffers[session_id] = bytearray()
-            agent = get_booking_agent(booking_ctx)
-        else:
-            agent = get_agent(prompt)
+        booking_ctx = BookingContext()
+        self.booking_contexts[session_id] = booking_ctx
+        self.destination_audio_buffers[session_id] = bytearray()
+        agent = get_booking_agent(booking_ctx)
 
         runner = RealtimeRunner(agent)
 
@@ -202,11 +196,10 @@ class RealtimeWebSocketManager:
 
         # Wire the state-change callback so booking tools can push the new
         # system prompt back to the realtime model after every transition.
-        if booking_ctx is not None:
-            async def _on_state_change(ctx: BookingContext) -> None:
-                await self._on_booking_state_change(session_id, ctx)
+        async def _on_state_change(ctx: BookingContext) -> None:
+            await self._on_booking_state_change(session_id, ctx)
 
-            booking_ctx.on_state_change = _on_state_change
+        booking_ctx.on_state_change = _on_state_change
 
         asyncio.create_task(self._process_events(session_id))
 
@@ -219,7 +212,7 @@ class RealtimeWebSocketManager:
             realtime_model=deployment,
             mode=mode,
         )
-        if booking_ctx is not None and booking_ctx.state is not None:
+        if booking_ctx.state is not None:
             await self._send_log(
                 session_id,
                 "state",
@@ -580,11 +573,6 @@ async def get_modes():
     return JSONResponse({"modes": list_modes()})
 
 
-@app.get("/api/prompts")
-async def get_prompts():
-    return JSONResponse({"prompts": list_prompts()})
-
-
 @app.get("/api/models")
 async def get_models():
     """List available Azure OpenAI deployments."""
@@ -635,11 +623,10 @@ async def get_models():
 async def websocket_endpoint(
     websocket: WebSocket,
     session_id: str,
-    mode: str = "voice_assistant",
-    prompt: str = "default",
+    mode: str = "booking",
     model: str | None = None,
 ):
-    logger.info("Client connecting — session=%s, mode=%s, prompt=%s, model=%s", session_id, mode, prompt, model or "default")
+    logger.info("Client connecting — session=%s, mode=%s, model=%s", session_id, mode, model or "default")
 
     if len(manager.active_sessions) >= MAX_SESSIONS:
         await websocket.accept()
@@ -648,7 +635,7 @@ async def websocket_endpoint(
         return
 
     try:
-        await manager.connect(websocket, session_id, mode, prompt, model)
+        await manager.connect(websocket, session_id, mode, model)
     except FileNotFoundError as e:
         await websocket.accept()
         await websocket.send_text(json.dumps({"type": "error", "error": str(e)}))

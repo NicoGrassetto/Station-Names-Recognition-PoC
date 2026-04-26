@@ -38,7 +38,7 @@ export interface UseRealtimeReturn {
   toolActivity: ToolActivity | null;
   logs: LogEntry[];
   clearLogs: () => void;
-  connect: (mode: string, prompt?: string, model?: string) => void;
+  connect: (mode: string, model?: string) => void;
   disconnect: () => void;
   sendAudio: (samples: number[]) => void;
   sendCommitAudio: () => void;
@@ -210,7 +210,7 @@ export function useRealtime(
   }, [extractText]);
 
   const connect = useCallback(
-    (mode: string, prompt = "default", model?: string) => {
+    (mode: string, model?: string) => {
       // Disconnect existing
       if (wsRef.current) {
         wsRef.current.close();
@@ -227,7 +227,7 @@ export function useRealtime(
 
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       const host = window.location.host;
-      let url = `${protocol}//${host}/ws/${sid}?mode=${encodeURIComponent(mode)}&prompt=${encodeURIComponent(prompt)}`;
+      let url = `${protocol}//${host}/ws/${sid}?mode=${encodeURIComponent(mode)}`;
       if (model) {
         url += `&model=${encodeURIComponent(model)}`;
       }

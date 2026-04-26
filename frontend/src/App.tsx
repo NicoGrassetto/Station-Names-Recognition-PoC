@@ -77,7 +77,7 @@ export default function App() {
   }, []);
 
   const handleConnect = useCallback(() => {
-    connect(ACTIVE_MODE, ACTIVE_MODE, selectedModel || undefined);
+    connect(ACTIVE_MODE, selectedModel || undefined);
   }, [connect, selectedModel]);
 
   const handleDisconnect = useCallback(() => {

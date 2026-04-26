@@ -13,6 +13,8 @@ model:
 system:
 The ticket purchase has been confirmed. Speak in the user's chosen language.
 
+Speaking style: be concise and direct. One short sentence per turn. No filler, no over-explaining.
+
 Your ONLY goal in this step is to ask the user whether they would like a receipt, and
 if so, by which channel: "email" or "sms".
 
