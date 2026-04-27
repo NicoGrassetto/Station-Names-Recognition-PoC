@@ -1,35 +1,40 @@
-"""State interface and concrete state implementations.
+"""Booking flow finite-state automaton.
 
-Each state is bound to a ``.prompty`` file via the ``prompt_name`` class
-attribute. Call :meth:`State.load_prompt` to resolve the system prompt text
-through the existing :mod:`prompts` loader.
+Each state owns its system prompt (a ``.prompty`` file in :mod:`prompts`)
+and knows its successors via :meth:`State.confirm` and :meth:`State.cancel`.
+
+The states are pure: they hold no per-session data. The runtime instance
+attached to a connection lives on :class:`src.session.Session.state` and
+the collected slot values live on :class:`src.booking.BookingSession`.
 """
 
 from __future__ import annotations
 
+import logging
 from abc import ABC, abstractmethod
 from typing import ClassVar, Optional
 
 from prompts import load_prompt
 
+logger = logging.getLogger("state")
+
 
 class State(ABC):
-    """Abstract base class defining the State interface."""
-
     #: Name of the ``.prompty`` file (without extension) backing this state.
     prompt_name: ClassVar[str]
 
+    @property
+    def name(self) -> str:
+        return type(self).__name__
+
     def load_prompt(self) -> str:
-        """Return the system prompt text associated with this state."""
         return load_prompt(self.prompt_name)
 
     @abstractmethod
-    def cancel(self) -> Optional["State"]:
-        """Cancel the current state and return the next state (if any)."""
+    def cancel(self) -> Optional["State"]: ...
 
     @abstractmethod
-    def confirm(self) -> Optional["State"]:
-        """Confirm the current state and return the next state (if any)."""
+    def confirm(self) -> Optional["State"]: ...
 
 
 class LanguageSelectionState(State):
@@ -53,6 +58,15 @@ class ProductSelectionState(State):
 
 
 class DestinationSelectionState(State):
+    """Capture the destination station via Azure Custom Speech (NOT Whisper).
+
+    While in this state the WebSocket handler is expected to:
+      * keep buffering the inbound PCM16 audio on ``Session.audio_buffer``;
+      * when the user signals end-of-speech (``stop`` control message),
+        run :func:`src.speech.transcribe_destination_audio` over the buffer
+        and assign the result to ``Session.booking.arrival_station``.
+    """
+
     prompt_name = "destination_selection"
 
     def cancel(self) -> Optional[State]:

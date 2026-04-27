@@ -1,7 +1,7 @@
 """Booking flow function tools.
 
 These tools mutate a per-session :class:`~src.booking.BookingContext` and
-drive the state machine in :mod:`package`. Because each tool closes over a
+drive the state machine in :mod:`src.state`. Because each tool closes over a
 specific ``ctx``, they're built per-session via :func:`make_booking_tools`
 rather than exposed as module-level singletons (so the auto-discovery in
 ``tools/__init__.py`` correctly skips them).
@@ -17,7 +17,7 @@ from typing import Optional
 from agents import function_tool
 from agents.tool import FunctionTool
 
-from package import (
+from src.state import (
     ConfirmationState,
     DestinationSelectionState,
     DetailsSelectionState,

@@ -1,6 +1,6 @@
 """Per-session booking context, state-aware tools, and Azure Speech bridge.
 
-The booking flow lives in :mod:`package` (the State subclasses). This module
+The booking flow lives in :mod:`src.state` (the State subclasses). This module
 glues that pure state machine to a concrete realtime session:
 
 * :class:`BookingContext` holds the active state, the slot values collected
@@ -27,7 +27,7 @@ from agents import function_tool
 from agents.tool import FunctionTool
 from azure.identity import DefaultAzureCredential
 
-from package import (
+from src.state import (
     ConfirmationState,
     DestinationSelectionState,
     DetailsSelectionState,
