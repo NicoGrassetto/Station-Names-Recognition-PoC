@@ -61,6 +61,7 @@ class BookingContext:
     state: Optional[State] = field(default_factory=LanguageSelectionState)
     language: Optional[str] = None
     tier: Optional[str] = None
+    origin: Optional[str] = None
     destination: Optional[str] = None
     date: Optional[str] = None
     round_trip: Optional[bool] = None
@@ -84,6 +85,7 @@ class BookingContext:
         return {
             "language": self.language,
             "tier": self.tier,
+            "origin": self.origin,
             "destination": self.destination,
             "date": self.date,
             "round_trip": self.round_trip,

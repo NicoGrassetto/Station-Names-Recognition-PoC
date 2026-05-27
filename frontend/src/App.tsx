@@ -49,6 +49,7 @@ export default function App() {
 
   const playerRef = useRef<AudioPlayer | null>(null);
   const captureRef = useRef<AudioCapture | null>(null);
+  const aiSpeakingRef = useRef(false);
 
   function getPlayer() {
     if (!playerRef.current) {
@@ -58,15 +59,18 @@ export default function App() {
   }
 
   const handleAudioChunk = useCallback((base64: string) => {
+    aiSpeakingRef.current = true;
     setAiSpeaking(true);
     getPlayer().enqueue(base64);
   }, []);
 
   const handleAudioEnd = useCallback(() => {
+    aiSpeakingRef.current = false;
     setAiSpeaking(false);
   }, []);
 
   const handleAudioInterrupted = useCallback(() => {
+    aiSpeakingRef.current = false;
     setAiSpeaking(false);
     getPlayer().interrupt();
   }, []);
@@ -187,30 +191,49 @@ export default function App() {
       captureRef.current.stop();
       setRecording(false);
     }
+    aiSpeakingRef.current = false;
     setAiSpeaking(false);
     getPlayer().interrupt();
     disconnect();
   }, [disconnect]);
 
+  const startMicCapture = useCallback(() => {
+    if (captureRef.current?.isRecording()) return;
+    const capture = createAudioCapture((samples) => {
+      if (!aiSpeakingRef.current) {
+        sendAudioRef.current(samples);
+    }
+    });
+    captureRef.current = capture;
+    capture.start().then(
+      () => setRecording(true),
+      (err) => {
+        console.error("Mic capture failed:", err);
+        captureRef.current = null;
+        setRecording(false);
+      }
+    );
+  }, []);
+
+  const stopMicCapture = useCallback(() => {
+    captureRef.current?.stop();
+    captureRef.current = null;
+    setRecording(false);
+  }, []);
+
   const handleToggleMic = useCallback(() => {
     if (captureRef.current?.isRecording()) {
-      captureRef.current.stop();
-      captureRef.current = null;
-      setRecording(false);
+      stopMicCapture();
     } else {
-      const capture = createAudioCapture((samples) => {
-        sendAudioRef.current(samples);
-      });
-      captureRef.current = capture;
-      capture.start().then(
-        () => setRecording(true),
-        (err) => {
-          console.error("Mic capture failed:", err);
-          captureRef.current = null;
-        }
-      );
+      startMicCapture();
     }
-  }, []);
+  }, [startMicCapture, stopMicCapture]);
+
+  useEffect(() => {
+    if (connected && !captureRef.current?.isRecording()) {
+      startMicCapture();
+    }
+  }, [connected, startMicCapture]);
 
   const handleSendText = useCallback(
     (text: string) => {

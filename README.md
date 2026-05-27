@@ -97,7 +97,11 @@ Python `3.11.x` patch release or Python `3.12+`.
 
 Known to work: Python 3.13+
 
-Open the URL printed by Vite (typically `http://localhost:5173`), grant mic access, and start talking.
+Open the URL printed by Vite (typically `http://localhost:5173`) and click the
+connect button. The assistant starts the language-selection prompt
+automatically. The app also starts microphone capture after connect; grant mic
+access when the browser asks. The backend console/log panel will show
+`Receiving microphone audio` when PCM chunks are being sent.
 
 ## Manual Setup
 

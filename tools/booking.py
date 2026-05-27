@@ -59,7 +59,10 @@ def make_booking_tools(ctx: BookingContext) -> list[FunctionTool]:
             return f"Unsupported language '{language}'. Use French, Flemish, or English."
         ctx.language = norm
         await _advance("confirm")
-        return f"Language set to {norm}. Now in {ctx.state_name()}."
+        return (
+            "Language recorded. Ask exactly: Which fare tier do you want: "
+            "Standard, Comfort, or First?"
+        )
 
     @function_tool
     async def set_tier(tier: str) -> str:
@@ -75,7 +78,21 @@ def make_booking_tools(ctx: BookingContext) -> list[FunctionTool]:
             return f"Unsupported tier '{tier}'. Use Standard, Comfort, or First."
         ctx.tier = norm
         await _advance("confirm")
-        return f"Tier set to {norm}. Now in {ctx.state_name()}."
+        return "Fare tier recorded. Ask exactly: Which station are you departing from?"
+
+    @function_tool
+    async def set_origin(origin: str) -> str:
+        """Record the departure station while staying in destination selection.
+
+        Args:
+            origin: The departure station name as confirmed by the user.
+        """
+        if not isinstance(ctx.state, DestinationSelectionState):
+            return f"Not in route selection (current: {ctx.state_name()})."
+        ctx.origin = origin.strip()
+        if ctx.on_state_change is not None:
+            await ctx.on_state_change(ctx)
+        return "Origin recorded. Ask exactly: Which station do you want to travel to?"
 
     @function_tool
     async def set_destination(destination: str) -> str:
@@ -86,9 +103,11 @@ def make_booking_tools(ctx: BookingContext) -> list[FunctionTool]:
         """
         if not isinstance(ctx.state, DestinationSelectionState):
             return f"Not in destination selection (current: {ctx.state_name()})."
+        if not ctx.origin:
+            return "Origin station is missing. Ask for the departure station first."
         ctx.destination = destination.strip()
         await _advance("confirm")
-        return f"Destination set to '{ctx.destination}'. Now in {ctx.state_name()}."
+        return "Destination recorded. Ask exactly: What is your outbound travel date?"
 
     @function_tool
     async def lookup_trains(date: str, origin: Optional[str] = None) -> str:
@@ -99,13 +118,15 @@ def make_booking_tools(ctx: BookingContext) -> list[FunctionTool]:
 
         Args:
             date: Outbound date in YYYY-MM-DD.
-            origin: Origin station. Defaults to "Brussels-Central" if omitted.
+            origin: Origin station. Uses the captured origin if omitted.
         """
         if not isinstance(ctx.state, DetailsSelectionState):
             return f"Not in details selection (current: {ctx.state_name()})."
+        if not ctx.origin:
+            return "No origin set yet — cannot look up trains."
         if not ctx.destination:
             return "No destination set yet — cannot look up trains."
-        org = (origin or "Brussels-Central").strip()
+        org = (origin or ctx.origin).strip()
         # Deterministic mock schedule keyed off date so the agent gets stable
         # results across multiple calls within the same booking.
         seed = sum(ord(c) for c in (date + ctx.destination)) % 4
@@ -165,7 +186,7 @@ def make_booking_tools(ctx: BookingContext) -> list[FunctionTool]:
         ctx.return_date = return_date if round_trip else None
         ctx.passengers = int(passengers)
         await _advance("confirm")
-        return f"Details recorded. Now in {ctx.state_name()}."
+        return "Details recorded. Summarize the booking once and ask for final confirmation."
 
     @function_tool
     async def send_purchase_confirmation_to_phone() -> str:
@@ -212,6 +233,7 @@ def make_booking_tools(ctx: BookingContext) -> list[FunctionTool]:
     return [
         set_language,
         set_tier,
+        set_origin,
         set_destination,
         lookup_trains,
         set_details,

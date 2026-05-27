@@ -6,16 +6,41 @@
 
 const WORKLET_CODE = `
 class PCM16Processor extends AudioWorkletProcessor {
+  constructor() {
+    super();
+    this.activeFrames = 0;
+    this.silenceFrames = 0;
+    this.threshold = 0.012;
+    this.hangoverFrames = 10;
+  }
+
   process(inputs) {
     const input = inputs[0];
     if (input && input[0]) {
       const float32 = input[0];
+      let sumSquares = 0;
+      for (let i = 0; i < float32.length; i++) {
+        sumSquares += float32[i] * float32[i];
+      }
+      const rms = Math.sqrt(sumSquares / float32.length);
+      if (rms >= this.threshold) {
+        this.activeFrames = this.hangoverFrames;
+      } else if (this.activeFrames > 0) {
+        this.activeFrames--;
+      } else {
+        this.silenceFrames++;
+        if (this.silenceFrames % 50 === 0) {
+          this.port.postMessage({ type: "silence", rms });
+        }
+        return true;
+      }
+      this.silenceFrames = 0;
       const int16 = new Int16Array(float32.length);
       for (let i = 0; i < float32.length; i++) {
         const s = Math.max(-1, Math.min(1, float32[i]));
         int16[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
       }
-      this.port.postMessage(int16.buffer, [int16.buffer]);
+      this.port.postMessage({ type: "audio", buffer: int16.buffer, rms }, [int16.buffer]);
     }
     return true;
   }
@@ -34,6 +59,7 @@ export function createAudioCapture(
 ): AudioCapture {
   let audioContext: AudioContext | null = null;
   let workletNode: AudioWorkletNode | null = null;
+  let silentGain: GainNode | null = null;
   let source: MediaStreamAudioSourceNode | null = null;
   let stream: MediaStream | null = null;
   let recording = false;
@@ -59,24 +85,31 @@ export function createAudioCapture(
 
     source = audioContext.createMediaStreamSource(stream);
     workletNode = new AudioWorkletNode(audioContext, "pcm16-processor");
+    silentGain = audioContext.createGain();
+    silentGain.gain.value = 0;
 
     workletNode.port.onmessage = (e: MessageEvent) => {
-      const int16 = new Int16Array(e.data as ArrayBuffer);
+      const message = e.data as { type?: string; buffer?: ArrayBuffer };
+      if (message.type !== "audio" || !message.buffer) return;
+      const int16 = new Int16Array(message.buffer);
       onAudioData(Array.from(int16));
     };
 
     source.connect(workletNode);
-    workletNode.connect(audioContext.destination);
+    workletNode.connect(silentGain);
+    silentGain.connect(audioContext.destination);
     recording = true;
   }
 
   function stop() {
     recording = false;
     workletNode?.disconnect();
+    silentGain?.disconnect();
     source?.disconnect();
     stream?.getTracks().forEach((t) => t.stop());
     audioContext?.close();
     workletNode = null;
+    silentGain = null;
     source = null;
     stream = null;
     audioContext = null;

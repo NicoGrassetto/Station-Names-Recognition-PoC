@@ -26,10 +26,7 @@ from agents.realtime import RealtimeRunner, RealtimeSession, RealtimeSessionEven
 from agents.realtime.config import RealtimeUserInputMessage
 from agents.realtime.items import RealtimeItem
 from agents.realtime.model import RealtimeModelConfig
-from agents.realtime.model_inputs import (
-    RealtimeModelSendRawMessage,
-    RealtimeModelSendSessionUpdate,
-)
+from agents.realtime.model_inputs import RealtimeModelSendRawMessage
 
 from config import load_session_config
 from src.agent import get_booking_agent
@@ -142,9 +139,9 @@ class GPTRealtimeProvider:
         self.booking_contexts: dict[str, BookingContext] = {}
         self.destination_audio_buffers: dict[str, bytearray] = {}
         self.destination_transcribing: set[str] = set()
-        self.pending_state_responses: set[str] = set()
         self.collect_mode_state: dict[str, str] = {}
         self.session_tools: dict[str, list[Any]] = {}
+        self.audio_bytes_received: dict[str, int] = {}
 
     def active_count(self) -> int:
         return len(self.active_sessions)
@@ -174,6 +171,7 @@ class GPTRealtimeProvider:
         booking_ctx = BookingContext()
         self.booking_contexts[session_id] = booking_ctx
         self.destination_audio_buffers[session_id] = bytearray()
+        self.audio_bytes_received[session_id] = 0
         agent = get_booking_agent(booking_ctx)
         self.session_tools[session_id] = list(agent.tools)
 
@@ -216,6 +214,13 @@ class GPTRealtimeProvider:
                 f"Initial state: {type(booking_ctx.state).__name__}",
                 state=type(booking_ctx.state).__name__,
             )
+        await self._send_log(
+            session_id,
+            "session",
+            "Starting initial assistant response",
+            state=booking_ctx.state_name(),
+        )
+        await self._send_client_event(session_id, {"type": "response.create"})
 
     async def disconnect(self, session_id: str) -> None:
         task = self.event_tasks.pop(session_id, None)
@@ -234,11 +239,22 @@ class GPTRealtimeProvider:
         self.booking_contexts.pop(session_id, None)
         self.destination_audio_buffers.pop(session_id, None)
         self.destination_transcribing.discard(session_id)
-        self.pending_state_responses.discard(session_id)
         self.collect_mode_state.pop(session_id, None)
         self.session_tools.pop(session_id, None)
+        self.audio_bytes_received.pop(session_id, None)
 
     async def send_audio(self, session_id: str, audio_bytes: bytes) -> None:
+        previous_total = self.audio_bytes_received.get(session_id, 0)
+        new_total = previous_total + len(audio_bytes)
+        self.audio_bytes_received[session_id] = new_total
+        # Log roughly once per second of 24 kHz mono PCM16 input.
+        if previous_total // 48_000 != new_total // 48_000:
+            await self._send_log(
+                session_id,
+                "audio",
+                "Receiving microphone audio",
+                bytes_received=new_total,
+            )
         ctx = self.booking_contexts.get(session_id)
         if ctx is not None and isinstance(ctx.state, DestinationSelectionState):
             self.destination_audio_buffers[session_id].extend(audio_bytes)
@@ -289,13 +305,9 @@ class GPTRealtimeProvider:
         session = self.active_sessions.get(session_id)
         if not session:
             return
-        if "tools" not in session_settings and session_id in self.session_tools:
-            session_settings = {
-                **session_settings,
-                "tools": self.session_tools[session_id],
-            }
-        await session.model.send_event(
-            RealtimeModelSendSessionUpdate(session_settings=session_settings)
+        await self._send_client_event(
+            session_id,
+            {"type": "session.update", "session": session_settings},
         )
 
     async def _send_user_message(
@@ -375,7 +387,6 @@ class GPTRealtimeProvider:
             update_payload,
         )
         self.destination_audio_buffers[session_id] = bytearray()
-        self.pending_state_responses.add(session_id)
         self.collect_mode_state.pop(session_id, None)
 
         await self._send_log(
@@ -385,13 +396,6 @@ class GPTRealtimeProvider:
             state=type(ctx.state).__name__,
             summary=ctx.summary(),
         )
-        await self._send_log(
-            session_id,
-            "state",
-            "Queued next-state response",
-            state=type(ctx.state).__name__,
-        )
-
         if websocket is not None:
             await websocket.send_text(
                 json.dumps(
@@ -568,10 +572,7 @@ class GPTRealtimeProvider:
                                 self._commit_destination_audio(session_id)
                             )
                     elif raw_type in ("response.done", "turn_ended"):
-                        if session_id in self.pending_state_responses:
-                            await self._create_pending_state_response(session_id)
-                        else:
-                            await self._set_collect_phase(session_id)
+                        await self._set_collect_phase(session_id)
                 if event.type == "tool_start":
                     ctx = self.booking_contexts.get(session_id)
                     await self._send_log(
@@ -589,7 +590,6 @@ class GPTRealtimeProvider:
                         tool=event.tool.name,
                         output=str(event.output)[:500],
                     )
-                    await self._create_pending_state_response(session_id)
 
                 event_data = await self._serialize_event(event)
                 await websocket.send_text(json.dumps(event_data))
@@ -597,33 +597,6 @@ class GPTRealtimeProvider:
             raise
         except Exception as e:
             logger.error("Error processing events for %s: %s", session_id, e)
-
-    async def _create_pending_state_response(self, session_id: str) -> None:
-        if session_id not in self.pending_state_responses:
-            return
-        ctx = self.booking_contexts.get(session_id)
-        if ctx is None or ctx.state is None:
-            self.pending_state_responses.discard(session_id)
-            return
-        if session_id not in self.active_sessions:
-            self.pending_state_responses.discard(session_id)
-            return
-
-        self.pending_state_responses.discard(session_id)
-        await self._send_log(
-            session_id,
-            "state",
-            "Triggering next-state response",
-            state=type(ctx.state).__name__,
-        )
-        next_step_instructions = self._next_state_response_instructions(ctx)
-        await self._send_client_event(
-            session_id,
-            {
-                "type": "response.create",
-                "response": {"instructions": next_step_instructions},
-            },
-        )
 
     async def _set_collect_phase(self, session_id: str) -> None:
         ctx = self.booking_contexts.get(session_id)
@@ -646,40 +619,4 @@ class GPTRealtimeProvider:
             "Waiting for user input",
             state=state_name,
             tool_choice=tool_choice,
-        )
-
-    def _next_state_response_instructions(self, ctx: BookingContext) -> str:
-        state_name = ctx.state_name()
-        guidance_by_state = {
-            "ProductSelectionState": (
-                "Ask which fare tier the user wants. Include exactly these options: "
-                "Standard, Comfort, First."
-            ),
-            "DestinationSelectionState": (
-                "Ask which destination station the user wants. Do not ask for dates yet."
-            ),
-            "DetailsSelectionState": (
-                "Ask for the travel date, whether it is one-way or return, and passenger count."
-            ),
-            "ConfirmationState": (
-                "Summarize the booking and ask the user to confirm the purchase."
-            ),
-            "EndState": (
-                "Ask whether the user wants a receipt by email or SMS."
-            ),
-        }
-        guidance = guidance_by_state.get(
-            state_name,
-            "Ask the next required question for this booking step.",
-        )
-        language_instruction = (
-            f"Speak in {ctx.language}." if ctx.language else "Use the user's language."
-        )
-        return (
-            f"{ctx.state.load_prompt() if ctx.state else ''}\n\n"
-            f"Current booking summary: {json.dumps(ctx.summary(), ensure_ascii=False)}\n"
-            f"{language_instruction}\n"
-            f"Mandatory next response: {guidance}\n"
-            "Do not acknowledge the previous tool result. Do not say that the "
-            "language, tier, destination, details, or confirmation was selected."
         )
