@@ -1,10 +1,4 @@
-import {
-  ArrowRight,
-  Mic,
-  MicOff,
-  Plug,
-  Unplug,
-} from "lucide-react";
+import { ArrowRight, Mic, MicOff, Plug, Unplug } from "lucide-react";
 import "./ChatInput.css";
 
 interface ChatInputProps {
@@ -15,6 +9,26 @@ interface ChatInputProps {
   models: Array<{ id: string; model: string; status: string }>;
   selectedModel: string;
   onModelChange: (model: string) => void;
+  providers: Array<{
+    id: string;
+    name: string;
+    status: string;
+    disabled?: boolean;
+    reason?: string;
+  }>;
+  selectedProvider: string;
+  onProviderChange: (provider: string) => void;
+  providerRoutes: Array<{
+    id: string;
+    description: string;
+    status: string;
+    disabled?: boolean;
+    reason?: string;
+  }>;
+  selectedProviderRoute: string;
+  onProviderRouteChange: (route: string) => void;
+  canConnect: boolean;
+  statusMessage?: string;
   onConnect: () => void;
   onDisconnect: () => void;
   onToggleMic: () => void;
@@ -29,6 +43,14 @@ export default function ChatInput({
   models,
   selectedModel,
   onModelChange,
+  providers,
+  selectedProvider,
+  onProviderChange,
+  providerRoutes,
+  selectedProviderRoute,
+  onProviderRouteChange,
+  canConnect,
+  statusMessage,
   onConnect,
   onDisconnect,
   onToggleMic,
@@ -47,6 +69,11 @@ export default function ChatInput({
     }
   }
 
+  function statusSuffix(item: { status: string; disabled?: boolean }) {
+    if (!item.disabled && item.status === "available") return "";
+    return ` (${item.status.split("_").join(" ")})`;
+  }
+
   return (
     <div className="chat-input-wrapper">
       <div className="chat-input">
@@ -63,21 +90,64 @@ export default function ChatInput({
           }}
         />
         <div className="chat-input-toolbar">
-          <select
-            className="chat-input-model"
-            value={selectedModel}
-            onChange={(e) => onModelChange(e.target.value)}
-            disabled={connected}
-          >
-            {models.length === 0 && (
-              <option value="">Loading…</option>
+          <div style={{ display: "flex", gap: "8px" }}>
+            <select
+              className="chat-input-select"
+              value={selectedProvider}
+              onChange={(e) => onProviderChange(e.target.value)}
+              disabled={connected || providers.length === 0}
+              title={statusMessage}
+            >
+              {providers.length === 0 && (
+                <option value="">Backend unavailable</option>
+              )}
+              {providers.map((provider) => (
+                <option
+                  key={provider.id}
+                  value={provider.id}
+                  disabled={provider.disabled}
+                >
+                  {provider.name}
+                  {statusSuffix(provider)}
+                </option>
+              ))}
+            </select>
+
+            {providerRoutes.length > 0 && (
+              <select
+                className="chat-input-select"
+                value={selectedProviderRoute}
+                onChange={(e) => onProviderRouteChange(e.target.value)}
+                disabled={connected || providerRoutes.length === 0}
+                title={statusMessage}
+              >
+                {providerRoutes.map((route) => (
+                  <option
+                    key={route.id}
+                    value={route.id}
+                    disabled={route.disabled}
+                  >
+                    {route.id}
+                    {statusSuffix(route)}
+                  </option>
+                ))}
+              </select>
             )}
-            {models.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.id}
-              </option>
-            ))}
-          </select>
+
+            <select
+              className="chat-input-select"
+              value={selectedModel}
+              onChange={(e) => onModelChange(e.target.value)}
+              disabled={connected || models.length === 0}
+            >
+              {models.length === 0 && <option value="">Loading…</option>}
+              {models.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.id}
+                </option>
+              ))}
+            </select>
+          </div>
 
           <div className="chat-input-actions">
             {connected ? (
@@ -94,7 +164,8 @@ export default function ChatInput({
                 className="chat-input-btn"
                 onClick={onConnect}
                 aria-label="Connect"
-                title="Connect"
+                title={statusMessage || "Connect"}
+                disabled={!canConnect}
               >
                 <Plug size={18} />
               </button>
@@ -121,6 +192,9 @@ export default function ChatInput({
             </button>
           </div>
         </div>
+        {statusMessage && (
+          <div className="chat-input-status">{statusMessage}</div>
+        )}
       </div>
     </div>
   );

@@ -38,7 +38,12 @@ export interface UseRealtimeReturn {
   toolActivity: ToolActivity | null;
   logs: LogEntry[];
   clearLogs: () => void;
-  connect: (mode: string, model?: string) => void;
+  connect: (
+    mode: string,
+    model?: string,
+    provider?: string,
+    providerRoute?: string
+  ) => void;
   disconnect: () => void;
   sendAudio: (samples: number[]) => void;
   sendCommitAudio: () => void;
@@ -210,7 +215,12 @@ export function useRealtime(
   }, [extractText]);
 
   const connect = useCallback(
-    (mode: string, model?: string) => {
+    (
+      mode: string,
+      model?: string,
+      provider?: string,
+      providerRoute?: string
+    ) => {
       // Disconnect existing
       if (wsRef.current) {
         wsRef.current.close();
@@ -230,6 +240,12 @@ export function useRealtime(
       let url = `${protocol}//${host}/ws/${sid}?mode=${encodeURIComponent(mode)}`;
       if (model) {
         url += `&model=${encodeURIComponent(model)}`;
+      }
+      if (provider) {
+        url += `&provider=${encodeURIComponent(provider)}`;
+      }
+      if (providerRoute) {
+        url += `&provider_route=${encodeURIComponent(providerRoute)}`;
       }
 
       const ws = new WebSocket(url);

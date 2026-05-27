@@ -1,8 +1,9 @@
 fastapi
 uvicorn[standard]
-openai-agents
+openai-agents>=0.17.4
 websockets>=13.0
 azure-identity
+azure-cognitiveservices-speech
 azure-storage-blob
 python-dotenv
 pyyaml

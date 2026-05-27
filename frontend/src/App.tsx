@@ -19,12 +19,33 @@ interface ModelInfo {
   status: string;
 }
 
+interface ProviderRouteInfo {
+  id: string;
+  description: string;
+  status: string;
+  disabled?: boolean;
+  reason?: string;
+}
+
+interface ProviderInfo {
+  id: string;
+  name: string;
+  status: string;
+  disabled?: boolean;
+  reason?: string;
+  routes?: ProviderRouteInfo[];
+}
+
 export default function App() {
   const [inputValue, setInputValue] = useState("");
   const [recording, setRecording] = useState(false);
   const [aiSpeaking, setAiSpeaking] = useState(false);
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [selectedModel, setSelectedModel] = useState("");
+  const [providers, setProviders] = useState<ProviderInfo[]>([]);
+  const [selectedProvider, setSelectedProvider] = useState("");
+  const [selectedProviderRoute, setSelectedProviderRoute] = useState("");
+  const [backendStatusMessage, setBackendStatusMessage] = useState("");
 
   const playerRef = useRef<AudioPlayer | null>(null);
   const captureRef = useRef<AudioCapture | null>(null);
@@ -67,18 +88,99 @@ export default function App() {
   sendAudioRef.current = sendAudio;
 
   useEffect(() => {
-    fetch("/api/models")
-      .then((r) => r.json())
-      .then((data: { models: ModelInfo[]; default: string }) => {
+    let cancelled = false;
+
+    async function loadBackendMetadata() {
+      try {
+        const providersResponse = await fetch("/api/providers");
+        if (!providersResponse.ok) {
+          throw new Error(`Provider metadata failed (${providersResponse.status})`);
+        }
+        const providerData = (await providersResponse.json()) as {
+          providers: ProviderInfo[];
+          default: string;
+        };
+        if (cancelled) return;
+
+        setProviders(providerData.providers);
+        const defaultProvider =
+          providerData.providers.find(
+            (provider) => provider.id === providerData.default && !provider.disabled
+          ) ??
+          providerData.providers.find((provider) => !provider.disabled) ??
+          providerData.providers[0];
+        setSelectedProvider(defaultProvider?.id ?? "");
+        const defaultRoute =
+          defaultProvider?.routes?.find((route) => !route.disabled) ??
+          defaultProvider?.routes?.[0];
+        setSelectedProviderRoute(defaultRoute?.id ?? "");
+        setBackendStatusMessage("");
+
+        const modelsResponse = await fetch("/api/models");
+        if (!modelsResponse.ok) {
+          throw new Error(`Model metadata failed (${modelsResponse.status})`);
+        }
+        const data = (await modelsResponse.json()) as {
+          models: ModelInfo[];
+          default: string;
+        };
+        if (cancelled) return;
         setModels(data.models);
         setSelectedModel(data.default);
-      })
-      .catch(() => {});
+      } catch {
+        if (cancelled) return;
+        setProviders([]);
+        setModels([]);
+        setSelectedProvider("");
+        setSelectedProviderRoute("");
+        setSelectedModel("");
+        setBackendStatusMessage(
+          "Backend unavailable. Start it with: python -m uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload"
+        );
+      }
+    }
+
+    loadBackendMetadata();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
+  const selectedProviderInfo =
+    providers.find((provider) => provider.id === selectedProvider) ?? null;
+  const providerRoutes = selectedProviderInfo?.routes ?? [];
+  const selectedRouteInfo =
+    providerRoutes.find((route) => route.id === selectedProviderRoute) ?? null;
+  const providerStatusMessage =
+    backendStatusMessage ||
+    selectedRouteInfo?.reason ||
+    selectedProviderInfo?.reason ||
+    "";
+  const canConnect =
+    !backendStatusMessage &&
+    !!selectedProviderInfo &&
+    !selectedProviderInfo.disabled &&
+    (providerRoutes.length === 0 || (!!selectedRouteInfo && !selectedRouteInfo.disabled));
+
   const handleConnect = useCallback(() => {
-    connect(ACTIVE_MODE, selectedModel || undefined);
-  }, [connect, selectedModel]);
+    if (!canConnect) return;
+    connect(
+      ACTIVE_MODE,
+      selectedModel || undefined,
+      selectedProvider || undefined,
+      selectedProviderRoute || undefined
+    );
+  }, [canConnect, connect, selectedModel, selectedProvider, selectedProviderRoute]);
+
+  const handleProviderChange = useCallback(
+    (providerId: string) => {
+      setSelectedProvider(providerId);
+      const provider = providers.find((p) => p.id === providerId);
+      const route = provider?.routes?.find((r) => !r.disabled) ?? provider?.routes?.[0];
+      setSelectedProviderRoute(route?.id ?? "");
+    },
+    [providers]
+  );
 
   const handleDisconnect = useCallback(() => {
     if (captureRef.current?.isRecording()) {
@@ -152,6 +254,14 @@ export default function App() {
           models={models}
           selectedModel={selectedModel}
           onModelChange={setSelectedModel}
+          providers={providers}
+          selectedProvider={selectedProvider}
+          onProviderChange={handleProviderChange}
+          providerRoutes={providerRoutes}
+          selectedProviderRoute={selectedProviderRoute}
+          onProviderRouteChange={setSelectedProviderRoute}
+          canConnect={canConnect}
+          statusMessage={providerStatusMessage}
           onConnect={handleConnect}
           onDisconnect={handleDisconnect}
           onToggleMic={handleToggleMic}

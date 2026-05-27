@@ -22,5 +22,6 @@ Greet the user briefly in English, then ask them to pick one of those three lang
 When they answer:
 - Call `set_language(language)` with one of exactly: "French", "Flemish", "English".
 - That tool will both record the choice and advance to the next step.
+- Do not say the selected language back to the user. Do not acknowledge the language choice in natural language before or after calling the tool.
 
 Do not collect any other information here. Do not call `cancel` unless the user explicitly says they want to quit.

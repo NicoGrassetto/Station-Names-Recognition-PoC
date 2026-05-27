@@ -24,5 +24,6 @@ Your ONLY goal in this step is to ask which fare tier the user wants:
 Present the three tiers briefly. When the user picks one:
 - Call `set_tier(tier)` with one of exactly: "Standard", "Comfort", "First".
 - That tool records the choice and advances to destination selection.
+- Do not acknowledge the selected tier in natural language before or after calling the tool.
 
 If the user wants to go back to language selection, call `cancel`.
